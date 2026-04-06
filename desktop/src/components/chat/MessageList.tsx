@@ -4,47 +4,98 @@ import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallBlock } from './ToolCallBlock'
+import { ToolCallGroup } from './ToolCallGroup'
 import { ToolResultBlock } from './ToolResultBlock'
 import { PermissionDialog } from './PermissionDialog'
 import { AskUserQuestion } from './AskUserQuestion'
 import { StreamingIndicator } from './StreamingIndicator'
 import type { UIMessage } from '../../types/chat'
 
+type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
+type ToolResult = Extract<UIMessage, { type: 'tool_result' }>
+
+type RenderItem =
+  | { kind: 'tool_group'; toolCalls: ToolCall[]; id: string }
+  | { kind: 'message'; message: UIMessage }
+
+function buildRenderItems(messages: UIMessage[], toolUseIds: Set<string>): RenderItem[] {
+  const items: RenderItem[] = []
+  let pendingToolCalls: ToolCall[] = []
+
+  const flushGroup = () => {
+    if (pendingToolCalls.length > 0) {
+      items.push({
+        kind: 'tool_group',
+        toolCalls: [...pendingToolCalls],
+        id: `group-${pendingToolCalls[0]!.id}`,
+      })
+      pendingToolCalls = []
+    }
+  }
+
+  for (const msg of messages) {
+    if (msg.type === 'tool_result' && toolUseIds.has(msg.toolUseId)) {
+      continue
+    }
+
+    if (msg.type === 'tool_use') {
+      if (msg.toolName === 'AskUserQuestion') {
+        flushGroup()
+        items.push({ kind: 'message', message: msg })
+      } else {
+        pendingToolCalls.push(msg)
+      }
+    } else {
+      flushGroup()
+      items.push({ kind: 'message', message: msg })
+    }
+  }
+
+  flushGroup()
+  return items
+}
+
 export function MessageList() {
   const { messages, chatState, streamingText, activeThinkingId } = useChatStore()
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' })
   }, [messages.length, streamingText])
 
-  // Build a map of toolUseId → tool_use message for linking results
-  const toolUseMap = new Map<string, Extract<UIMessage, { type: 'tool_use' }>>()
+  const toolUseIds = new Set<string>()
+  const toolResultMap = new Map<string, ToolResult>()
 
   for (const msg of messages) {
     if (msg.type === 'tool_use') {
-      toolUseMap.set(msg.toolUseId, msg)
+      toolUseIds.add(msg.toolUseId)
     }
-  }
-
-  // For each tool_use, find its matching tool_result
-  const toolResultMap = new Map<string, Extract<UIMessage, { type: 'tool_result' }>>()
-  for (const msg of messages) {
     if (msg.type === 'tool_result' && msg.toolUseId) {
       toolResultMap.set(msg.toolUseId, msg)
     }
   }
 
+  const renderItems = buildRenderItems(messages, toolUseIds)
+
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4">
       <div className="mx-auto max-w-[860px]">
-        {messages.map((msg) => {
-          // Skip tool_results that are rendered inline within their ToolCallBlock
-          if (msg.type === 'tool_result' && toolUseMap.has(msg.toolUseId)) {
-            return null
+        {renderItems.map((item) => {
+          if (item.kind === 'tool_group') {
+            return (
+              <ToolCallGroup
+                key={item.id}
+                toolCalls={item.toolCalls}
+                resultMap={toolResultMap}
+                isStreaming={
+                  chatState === 'tool_executing' &&
+                  item.toolCalls.some((tc) => !toolResultMap.has(tc.toolUseId))
+                }
+              />
+            )
           }
 
+          const msg = item.message
           return (
             <MessageBlock
               key={msg.id}
@@ -52,19 +103,20 @@ export function MessageList() {
               activeThinkingId={activeThinkingId}
               toolResult={
                 msg.type === 'tool_use'
-                  ? toolResultMap.get(msg.toolUseId) ?? null
+                  ? (() => {
+                      const r = toolResultMap.get(msg.toolUseId)
+                      return r ? { content: r.content, isError: r.isError } : null
+                    })()
                   : null
               }
             />
           )
         })}
 
-        {/* Streaming text (not yet committed as a message) */}
         {streamingText && chatState === 'streaming' && (
           <AssistantMessage content={streamingText} isStreaming />
         )}
 
-        {/* Loading indicator */}
         {chatState !== 'idle' && chatState !== 'streaming' && chatState !== 'permission_pending' && (
           <StreamingIndicator />
         )}
@@ -92,7 +144,6 @@ function MessageBlock({
     case 'thinking':
       return <ThinkingBlock content={message.content} isActive={message.id === activeThinkingId} />
     case 'tool_use':
-      // Special handling for AskUserQuestion tool calls
       if (message.toolName === 'AskUserQuestion') {
         return (
           <AskUserQuestion
@@ -109,7 +160,6 @@ function MessageBlock({
         />
       )
     case 'tool_result':
-      // Standalone tool_result (no matching tool_use found)
       return (
         <ToolResultBlock
           content={message.content}
@@ -128,13 +178,13 @@ function MessageBlock({
       )
     case 'error':
       return (
-        <div className="mb-4 px-4 py-3 rounded-[var(--radius-md)] bg-red-50 border border-red-200 text-sm text-[var(--color-error)]">
+        <div className="mb-3 px-4 py-2.5 rounded-lg bg-red-50 border border-red-200 text-sm text-[var(--color-error)]">
           <strong>Error:</strong> {message.message}
         </div>
       )
     case 'system':
       return (
-        <div className="mb-4 text-center text-xs text-[var(--color-text-tertiary)]">
+        <div className="mb-3 text-center text-xs text-[var(--color-text-tertiary)]">
           {message.content}
         </div>
       )
