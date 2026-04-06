@@ -71,9 +71,7 @@ export function ToolCallBlock({ toolName, input, result, compact = false }: Prop
           </span>
         )}
         {result?.isError && (
-          <span className="shrink-0 rounded-full bg-[var(--color-error-container)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--color-error)]">
-            ERROR
-          </span>
+          <span className="material-symbols-outlined shrink-0 text-[14px] text-[var(--color-error)]">error</span>
         )}
         {expandable && (
           <span className="material-symbols-outlined text-[14px] text-[var(--color-outline)]">

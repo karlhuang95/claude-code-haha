@@ -75,11 +75,7 @@ function ToolCallGroupMulti({ toolCalls, resultMap, isStreaming }: Props) {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors ${
-          errorPresent
-            ? 'border border-[var(--color-error)]/20 bg-[var(--color-error-container)]/30 hover:bg-[var(--color-error-container)]/50'
-            : 'border border-[var(--color-border)]/40 bg-[var(--color-surface-container-low)] hover:bg-[var(--color-surface-container-high)]'
-        }`}
+        className="flex w-full items-center gap-2 rounded-lg border border-[var(--color-border)]/40 bg-[var(--color-surface-container-low)] px-3 py-1.5 text-left transition-colors hover:bg-[var(--color-surface-container-high)]"
       >
         <span className="material-symbols-outlined text-[14px] text-[var(--color-outline)]">
           {expanded ? 'expand_less' : 'expand_more'}
@@ -90,10 +86,11 @@ function ToolCallGroupMulti({ toolCalls, resultMap, isStreaming }: Props) {
         {!isStreaming && allComplete && !errorPresent && (
           <span className="material-symbols-outlined text-[14px] text-[var(--color-success)]">check_circle</span>
         )}
-        {errorPresent && (
-          <span className="rounded-full bg-[var(--color-error-container)] px-2 py-0.5 text-[9px] font-bold uppercase text-[var(--color-error)]">
-            ERROR
-          </span>
+        {!isStreaming && errorPresent && (
+          <span className="material-symbols-outlined text-[14px] text-[var(--color-error)]">error</span>
+        )}
+        {!isStreaming && !allComplete && !errorPresent && (
+          <span className="material-symbols-outlined text-[14px] text-[var(--color-outline)]">pending</span>
         )}
         {isStreaming && (
           <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)] animate-pulse-dot" />
